@@ -1,0 +1,562 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>BYU Pac-Man</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'Arial', sans-serif;
+            background: linear-gradient(135deg, #002E5D 0%, #0062B8 100%);
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            align-items: center;
+            min-height: 100vh;
+            color: white;
+        }
+
+        .game-container {
+            text-align: center;
+            background-color: rgba(0, 0, 0, 0.3);
+            padding: 2rem;
+            border-radius: 20px;
+            box-shadow: 0 10px 40px rgba(0, 0, 0, 0.5);
+        }
+
+        h1 {
+            font-size: 3rem;
+            margin-bottom: 1rem;
+            color: #FFFFFF;
+            text-shadow: 3px 3px 6px rgba(0, 0, 0, 0.7);
+        }
+
+        .byu-logo {
+            font-size: 1.5rem;
+            color: #FFFFFF;
+            margin-bottom: 1rem;
+            font-weight: bold;
+        }
+
+        .score-board {
+            display: flex;
+            justify-content: space-around;
+            margin-bottom: 1.5rem;
+            font-size: 1.3rem;
+        }
+
+        .score-item {
+            background-color: rgba(255, 255, 255, 0.1);
+            padding: 0.8rem 1.5rem;
+            border-radius: 10px;
+            border: 2px solid #FFFFFF;
+        }
+
+        canvas {
+            border: 5px solid #FFFFFF;
+            border-radius: 10px;
+            background-color: #000000;
+            box-shadow: 0 8px 30px rgba(0, 0, 0, 0.7);
+            display: block;
+            margin: 0 auto;
+        }
+
+        .controls {
+            margin-top: 1.5rem;
+            font-size: 1.1rem;
+            background-color: rgba(255, 255, 255, 0.1);
+            padding: 1rem;
+            border-radius: 10px;
+            border: 2px solid #FFFFFF;
+        }
+
+        .controls p {
+            margin: 0.5rem 0;
+        }
+
+        .game-over {
+            display: none;
+            position: fixed;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            background-color: rgba(0, 46, 93, 0.95);
+            padding: 3rem;
+            border-radius: 20px;
+            border: 5px solid #FFFFFF;
+            text-align: center;
+            z-index: 1000;
+        }
+
+        .game-over h2 {
+            font-size: 3rem;
+            margin-bottom: 1rem;
+            color: #FFFFFF;
+        }
+
+        .game-over p {
+            font-size: 1.5rem;
+            margin-bottom: 2rem;
+        }
+
+        .restart-btn {
+            background-color: #FFFFFF;
+            color: #002E5D;
+            border: none;
+            padding: 1rem 2.5rem;
+            font-size: 1.3rem;
+            border-radius: 50px;
+            cursor: pointer;
+            font-weight: bold;
+            transition: all 0.3s ease;
+        }
+
+        .restart-btn:hover {
+            background-color: #002E5D;
+            color: #FFFFFF;
+            transform: scale(1.1);
+        }
+
+        .instructions {
+            margin-top: 1rem;
+            font-size: 0.9rem;
+            color: #CCCCCC;
+        }
+    </style>
+</head>
+<body>
+    <div class="game-container">
+        <h1>🏈 BYU PAC-MAN 🏈</h1>
+        <div class="byu-logo">GO COUGARS!</div>
+        
+        <div class="score-board">
+            <div class="score-item">
+                Score: <span id="score">0</span>
+            </div>
+            <div class="score-item">
+                Lives: <span id="lives">3</span>
+            </div>
+        </div>
+
+        <canvas id="gameCanvas" width="600" height="600"></canvas>
+
+        <div class="controls">
+            <p><strong>Controls:</strong> Use Arrow Keys ⬆️ ⬇️ ⬅️ ➡️</p>
+            <p>Collect all the Y's and avoid the Utes!</p>
+        </div>
+
+        <div class="instructions">
+             <a href="index.html">Back to Home</a>  | BYU themed browser game
+        </div>
+    </div>
+
+    <div class="game-over" id="gameOver">
+        <h2>GAME OVER!</h2>
+        <p>Final Score: <span id="finalScore">0</span></p>
+        <button class="restart-btn" onclick="restartGame()">Play Again</button>
+    </div>
+
+    <script>
+        const canvas = document.getElementById('gameCanvas');
+        const ctx = canvas.getContext('2d');
+        const scoreElement = document.getElementById('score');
+        const livesElement = document.getElementById('lives');
+        const gameOverDiv = document.getElementById('gameOver');
+        const finalScoreElement = document.getElementById('finalScore');
+
+        // Game variables
+        const gridSize = 30;
+        const tileCount = canvas.width / gridSize;
+        
+        let pacman = {
+            x: 1,
+            y: 1,
+            direction: 'right',
+            nextDirection: 'right',
+            mouthOpen: true
+        };
+
+        let score = 0;
+        let lives = 3;
+        let dots = [];
+        let ghosts = [];
+        let gameLoop;
+        let mouthTimer = 0;
+
+        // BYU colors
+        const BYU_BLUE = '#002E5D';
+        const BYU_WHITE = '#FFFFFF';
+        const GHOST_RED = '#CC0000'; // Ute red
+
+        // Create maze (1 = wall, 0 = path)
+        const maze = [
+            [1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1],
+            [1,0,0,0,0,0,0,0,0,1,1,0,0,0,0,0,0,0,0,1],
+            [1,0,1,1,0,1,1,1,0,1,1,0,1,1,1,0,1,1,0,1],
+            [1,0,1,1,0,1,1,1,0,0,0,0,1,1,1,0,1,1,0,1],
+            [1,0,0,0,0,0,0,0,0,1,1,0,0,0,0,0,0,0,0,1],
+            [1,0,1,1,0,1,0,1,1,1,1,1,1,0,1,0,1,1,0,1],
+            [1,0,0,0,0,1,0,0,0,1,1,0,0,0,1,0,0,0,0,1],
+            [1,1,1,1,0,1,1,1,0,1,1,0,1,1,1,0,1,1,1,1],
+            [1,1,1,1,0,1,0,0,0,0,0,0,0,0,1,0,1,1,1,1],
+            [1,1,1,1,0,1,0,1,1,0,0,1,1,0,1,0,1,1,1,1],
+            [0,0,0,0,0,0,0,1,0,0,0,0,1,0,0,0,0,0,0,0],
+            [1,1,1,1,0,1,0,1,1,1,1,1,1,0,1,0,1,1,1,1],
+            [1,1,1,1,0,1,0,0,0,0,0,0,0,0,1,0,1,1,1,1],
+            [1,1,1,1,0,1,0,1,1,1,1,1,1,0,1,0,1,1,1,1],
+            [1,0,0,0,0,0,0,0,0,1,1,0,0,0,0,0,0,0,0,1],
+            [1,0,1,1,0,1,1,1,0,1,1,0,1,1,1,0,1,1,0,1],
+            [1,0,0,1,0,0,0,0,0,0,0,0,0,0,0,0,1,0,0,1],
+            [1,1,0,1,0,1,0,1,1,1,1,1,1,0,1,0,1,0,1,1],
+            [1,0,0,0,0,1,0,0,0,1,1,0,0,0,1,0,0,0,0,1],
+            [1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1]
+        ];
+
+        // Initialize game
+        function init() {
+            // Create dots
+            dots = [];
+            for (let y = 0; y < tileCount; y++) {
+                for (let x = 0; x < tileCount; x++) {
+                    if (maze[y][x] === 0 && !(x === 1 && y === 1)) {
+                        dots.push({x: x, y: y});
+                    }
+                }
+            }
+
+            // Create ghosts
+            ghosts = [
+                {x: 9, y: 9, color: GHOST_RED, direction: 'right'},
+                {x: 10, y: 9, color: '#FF69B4', direction: 'left'},
+                {x: 9, y: 10, color: '#00CED1', direction: 'up'},
+                {x: 10, y: 10, color: '#FFA500', direction: 'down'}
+            ];
+
+            pacman = {
+                x: 1,
+                y: 1,
+                direction: 'right',
+                nextDirection: 'right',
+                mouthOpen: true
+            };
+
+            score = 0;
+            lives = 3;
+            updateScore();
+            updateLives();
+
+            if (gameLoop) clearInterval(gameLoop);
+            gameLoop = setInterval(update, 150);
+        }
+
+        // Draw maze
+        function drawMaze() {
+            ctx.fillStyle = BYU_BLUE;
+            for (let y = 0; y < tileCount; y++) {
+                for (let x = 0; x < tileCount; x++) {
+                    if (maze[y][x] === 1) {
+                        ctx.fillRect(x * gridSize, y * gridSize, gridSize, gridSize);
+                        ctx.strokeStyle = '#0062B8';
+                        ctx.lineWidth = 2;
+                        ctx.strokeRect(x * gridSize, y * gridSize, gridSize, gridSize);
+                    }
+                }
+            }
+        }
+
+        // Draw dots (BYU Y's)
+        function drawDots() {
+            ctx.fillStyle = BYU_WHITE;
+            ctx.font = 'bold 12px Arial';
+            ctx.textAlign = 'center';
+            ctx.textBaseline = 'middle';
+            
+            dots.forEach(dot => {
+                ctx.fillText('Y', dot.x * gridSize + gridSize/2, dot.y * gridSize + gridSize/2);
+            });
+        }
+
+        // Draw Pac-Man
+        function drawPacman() {
+            const centerX = pacman.x * gridSize + gridSize / 2;
+            const centerY = pacman.y * gridSize + gridSize / 2;
+            const radius = gridSize / 2 - 2;
+
+            // Determine mouth angle based on direction
+            let startAngle, endAngle;
+            const mouthSize = pacman.mouthOpen ? 0.25 : 0.1;
+
+            switch(pacman.direction) {
+                case 'right':
+                    startAngle = mouthSize;
+                    endAngle = 2 - mouthSize;
+                    break;
+                case 'left':
+                    startAngle = 1 + mouthSize;
+                    endAngle = 1 - mouthSize;
+                    break;
+                case 'up':
+                    startAngle = 1.5 + mouthSize;
+                    endAngle = 1.5 - mouthSize;
+                    break;
+                case 'down':
+                    startAngle = 0.5 + mouthSize;
+                    endAngle = 0.5 - mouthSize;
+                    break;
+            }
+
+            ctx.fillStyle = '#FFD700'; // Gold for BYU
+            ctx.beginPath();
+            ctx.arc(centerX, centerY, radius, startAngle * Math.PI, endAngle * Math.PI);
+            ctx.lineTo(centerX, centerY);
+            ctx.fill();
+        }
+
+        // Draw ghosts (Utes)
+        function drawGhosts() {
+            ghosts.forEach(ghost => {
+                const x = ghost.x * gridSize + gridSize / 2;
+                const y = ghost.y * gridSize + gridSize / 2;
+                const radius = gridSize / 2 - 2;
+
+                // Ghost body
+                ctx.fillStyle = ghost.color;
+                ctx.beginPath();
+                ctx.arc(x, y - radius/3, radius, Math.PI, 0, false);
+                ctx.lineTo(x + radius, y + radius);
+                ctx.lineTo(x + radius/2, y + radius/2);
+                ctx.lineTo(x, y + radius);
+                ctx.lineTo(x - radius/2, y + radius/2);
+                ctx.lineTo(x - radius, y + radius);
+                ctx.closePath();
+                ctx.fill();
+
+                // Eyes
+                ctx.fillStyle = 'white';
+                ctx.beginPath();
+                ctx.arc(x - radius/3, y - radius/3, radius/4, 0, Math.PI * 2);
+                ctx.arc(x + radius/3, y - radius/3, radius/4, 0, Math.PI * 2);
+                ctx.fill();
+
+                // Pupils
+                ctx.fillStyle = 'black';
+                ctx.beginPath();
+                ctx.arc(x - radius/3, y - radius/3, radius/6, 0, Math.PI * 2);
+                ctx.arc(x + radius/3, y - radius/3, radius/6, 0, Math.PI * 2);
+                ctx.fill();
+            });
+        }
+
+        // Check if move is valid
+        function isValidMove(x, y) {
+            if (x < 0 || x >= tileCount || y < 0 || y >= tileCount) return false;
+            return maze[y][x] === 0;
+        }
+
+        // Move Pac-Man
+        function movePacman() {
+            // Try to change direction
+            let newX = pacman.x;
+            let newY = pacman.y;
+
+            switch(pacman.nextDirection) {
+                case 'up': newY--; break;
+                case 'down': newY++; break;
+                case 'left': newX--; break;
+                case 'right': newX++; break;
+            }
+
+            if (isValidMove(newX, newY)) {
+                pacman.direction = pacman.nextDirection;
+                pacman.x = newX;
+                pacman.y = newY;
+            } else {
+                // Continue in current direction
+                newX = pacman.x;
+                newY = pacman.y;
+
+                switch(pacman.direction) {
+                    case 'up': newY--; break;
+                    case 'down': newY++; break;
+                    case 'left': newX--; break;
+                    case 'right': newX++; break;
+                }
+
+                if (isValidMove(newX, newY)) {
+                    pacman.x = newX;
+                    pacman.y = newY;
+                }
+            }
+
+            // Animate mouth
+            mouthTimer++;
+            if (mouthTimer % 2 === 0) {
+                pacman.mouthOpen = !pacman.mouthOpen;
+            }
+        }
+
+        // Move ghosts
+        function moveGhosts() {
+            ghosts.forEach(ghost => {
+                const directions = ['up', 'down', 'left', 'right'];
+                let moved = false;
+                let attempts = 0;
+
+                while (!moved && attempts < 10) {
+                    // Sometimes chase Pac-Man
+                    if (Math.random() < 0.3) {
+                        if (pacman.x > ghost.x && isValidMove(ghost.x + 1, ghost.y)) {
+                            ghost.x++;
+                            ghost.direction = 'right';
+                            moved = true;
+                        } else if (pacman.x < ghost.x && isValidMove(ghost.x - 1, ghost.y)) {
+                            ghost.x--;
+                            ghost.direction = 'left';
+                            moved = true;
+                        } else if (pacman.y > ghost.y && isValidMove(ghost.x, ghost.y + 1)) {
+                            ghost.y++;
+                            ghost.direction = 'down';
+                            moved = true;
+                        } else if (pacman.y < ghost.y && isValidMove(ghost.x, ghost.y - 1)) {
+                            ghost.y--;
+                            ghost.direction = 'up';
+                            moved = true;
+                        }
+                    }
+
+                    if (!moved) {
+                        // Random movement
+                        const randomDir = directions[Math.floor(Math.random() * directions.length)];
+                        let newX = ghost.x;
+                        let newY = ghost.y;
+
+                        switch(randomDir) {
+                            case 'up': newY--; break;
+                            case 'down': newY++; break;
+                            case 'left': newX--; break;
+                            case 'right': newX++; break;
+                        }
+
+                        if (isValidMove(newX, newY)) {
+                            ghost.x = newX;
+                            ghost.y = newY;
+                            ghost.direction = randomDir;
+                            moved = true;
+                        }
+                    }
+                    attempts++;
+                }
+            });
+        }
+
+        // Check collisions
+        function checkCollisions() {
+            // Check dot collection
+            for (let i = dots.length - 1; i >= 0; i--) {
+                if (dots[i].x === pacman.x && dots[i].y === pacman.y) {
+                    dots.splice(i, 1);
+                    score += 10;
+                    updateScore();
+                }
+            }
+
+            // Check ghost collision
+            ghosts.forEach(ghost => {
+                if (ghost.x === pacman.x && ghost.y === pacman.y) {
+                    lives--;
+                    updateLives();
+                    if (lives > 0) {
+                        // Reset positions
+                        pacman.x = 1;
+                        pacman.y = 1;
+                        pacman.direction = 'right';
+                    } else {
+                        gameOver();
+                    }
+                }
+            });
+
+            // Check win condition
+            if (dots.length === 0) {
+                score += 500;
+                updateScore();
+                alert('You Win! Go Cougars! 🏈');
+                init();
+            }
+        }
+
+        // Update game
+        function update() {
+            movePacman();
+            moveGhosts();
+            checkCollisions();
+            draw();
+        }
+
+        // Draw everything
+        function draw() {
+            ctx.fillStyle = '#000000';
+            ctx.fillRect(0, 0, canvas.width, canvas.height);
+            
+            drawMaze();
+            drawDots();
+            drawGhosts();
+            drawPacman();
+        }
+
+        // Update score
+        function updateScore() {
+            scoreElement.textContent = score;
+        }
+
+        // Update lives
+        function updateLives() {
+            livesElement.textContent = lives;
+        }
+
+        // Game over
+        function gameOver() {
+            clearInterval(gameLoop);
+            finalScoreElement.textContent = score;
+            gameOverDiv.style.display = 'block';
+        }
+
+        // Restart game
+        function restartGame() {
+            gameOverDiv.style.display = 'none';
+            init();
+        }
+
+        // Keyboard controls
+        document.addEventListener('keydown', (e) => {
+            switch(e.key) {
+                case 'ArrowUp':
+                    pacman.nextDirection = 'up';
+                    e.preventDefault();
+                    break;
+                case 'ArrowDown':
+                    pacman.nextDirection = 'down';
+                    e.preventDefault();
+                    break;
+                case 'ArrowLeft':
+                    pacman.nextDirection = 'left';
+                    e.preventDefault();
+                    break;
+                case 'ArrowRight':
+                    pacman.nextDirection = 'right';
+                    e.preventDefault();
+                    break;
+            }
+        });
+
+        // Start game
+        init();
+    </script>
+</body>
+</html>
